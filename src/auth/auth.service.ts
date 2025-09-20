@@ -5,6 +5,7 @@ import { UserService } from 'src/user/user.service';
 import { AuthJwtPayload } from './types/auth-jwtPayload';
 import refreshJwtConfig from './config/refresh-jwt.config';
 import type { ConfigType } from '@nestjs/config'; // Changed to import type
+import * as argon2 from 'argon2';
 
 @Injectable()
 export class AuthService {
@@ -27,23 +28,55 @@ export class AuthService {
 
   async login(userId: number) {
     const user = await this.userService.findOne(userId);
-    const payload: AuthJwtPayload = { sub: userId };
+    const { accessToken, refreshToken } = await this.generateTokens(userId);
 
-    const token = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(payload, this.refreshTokenConfig);
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    await this.userService.updateHashedRefreshToken(userId, hashedRefreshToken);
+
     return {
       user,
-      token,
+      accessToken,
       refreshToken,
     };
   }
 
-  refreshToken(userId: number) {
+  async generateTokens(userId: number) {
     const payload: AuthJwtPayload = { sub: userId };
-    const token = this.jwtService.sign(payload);
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload),
+      this.jwtService.signAsync(payload, this.refreshTokenConfig),
+    ]);
+    return { accessToken, refreshToken };
+  }
+
+  async refreshToken(userId: number) {
+    const { accessToken, refreshToken } = await this.generateTokens(userId);
+
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    await this.userService.updateHashedRefreshToken(userId, hashedRefreshToken);
+
     return {
-      userId,
-      token,
+      id: userId,
+      accessToken,
+      refreshToken,
     };
+  }
+
+  async validateRefreshToken(userId: number, refreshToken: string) {
+    const user = await this.userService.findOne(userId);
+    if (!user || !user.hashedRefreshToken)
+      throw new UnauthorizedException('user not found!');
+    const isRefreshTokenMatch = await argon2.verify(
+      user.hashedRefreshToken,
+      refreshToken,
+    );
+    if (!isRefreshTokenMatch)
+      throw new UnauthorizedException('Invalid refresh token');
+    return { id: userId };
+  }
+
+  async logout(userId: number) {
+    await this.userService.updateHashedRefreshToken(userId, '');
+    return { id: userId };
   }
 }
