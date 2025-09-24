@@ -22,7 +22,7 @@ import { Roles } from 'src/auth/decorators/roles.decorators';
 import { RolesGuard } from 'src/auth/guards/roles/roles.guard';
 
 @Controller('user')
-@UseGuards(JwtAuthGuard) // Apply JWT guard to all endpoints
+// @UseGuards(JwtAuthGuard) // Apply JWT guard to all endpoints
 export class UserController {
   constructor(private userService: UserService) {}
 
@@ -76,7 +76,7 @@ export class UserController {
   }
 
   // Admin-only delete endpoint
-  @UseGuards(RolesGuard)
+  // @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
